@@ -1,0 +1,32 @@
+{
+  "name": "es3-compatible-webpack-plugin",
+  "version": "1.0.1",
+  "description": "A Webpack plugin used for converting code to be ES3-compatible.",
+  "main": "dist/index.js",
+  "dependencies": {},
+  "devDependencies": {
+    "babel-cli": "6.26.0",
+    "babel-core": "6.13.2",
+    "babel-preset-es2015": "6.13.2"
+  },
+  "scripts": {
+    "build": "node ./node_modules/babel-cli/bin/babel.js src -d dist",
+    "watch": "node ./node_modules/babel-cli/bin/babel.js -w src -d dist"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aleen42/ES3-compatible-webpack-plugin.git"
+  },
+  "keywords": [
+    "webpack",
+    "webpack-plugin",
+    "es3ify",
+    "es3"
+  ],
+  "author": "aleen42 <aleen42@vip.qq.com> (https://github.com/aleen42)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/aleen42/ES3-compatible-webpack-plugin/issues"
+  },
+  "homepage": "https://github.com/aleen42/ES3-compatible-webpack-plugin#readme"
+}
