@@ -3,7 +3,10 @@
   "version": "1.0.1",
   "description": "A Webpack plugin used for converting code to be ES3-compatible.",
   "main": "dist/index.js",
-  "dependencies": {},
+  "dependencies": {
+    "uglify-js": "3.3.23",
+    "webpack-core": "0.6.9"
+  },
   "devDependencies": {
     "babel-cli": "6.26.0",
     "babel-core": "6.13.2",
