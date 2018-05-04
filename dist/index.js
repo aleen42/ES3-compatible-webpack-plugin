@@ -178,4 +178,4 @@ var ES3CompatiblePlugin = function () {
     return ES3CompatiblePlugin;
 }();
 
-exports.ES3CompatiblePlugin = ES3CompatiblePlugin;
+exports.default = ES3CompatiblePlugin;

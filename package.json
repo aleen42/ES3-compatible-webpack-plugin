@@ -1,6 +1,6 @@
 {
   "name": "es3-compatible-webpack-plugin",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "A Webpack plugin used for converting code to be ES3-compatible.",
   "main": "dist/index.js",
   "dependencies": {
