@@ -20,7 +20,7 @@
 
 const SourceMapSource = require('webpack-core/lib/SourceMapSource');
 
-const UglifyJS = require('uglify-js');
+const {AST_ObjectProperty, AST_Dot, AST_Array, AST_Object, TreeWalker, parse} = require('uglify-js');
 
 /** EMCAScript-262 */
 const KEYWORDS = ['break', 'do', 'instanceof', 'typeof', 'case', 'else', 'new', 'var', 'catch', 'finally', 'return', 'void', 'continue', 'for', 'switch', 'while', 'debugger', 'function', 'this', 'with', 'default', 'if', 'throw', 'delete', 'in', 'try'];
@@ -40,29 +40,27 @@ const literalRegex = [].concat(RESERVED_WORDS).concat(KEYWORDS).concat(NULL_LITE
 class ES3CompatiblePlugin {
     process(source) {
         /** the AST structure (http://lisperator.net/uglifyjs/ast) of UglifyJS */
-        const ast = UglifyJS.parse(source);
+        const ast = parse(source);
 
         /** code snippets to be replaced */
         const snippets = [];
+        const _snippet = (type, key, start, end) => snippets.push({type, key, start, end});
+        const _substr = source.substring.bind(source);
 
-        ast.walk(new UglifyJS.TreeWalker(node => {
-            if (node instanceof UglifyJS.AST_ObjectProperty
+        ast.walk(new TreeWalker(node => {
+            if (node instanceof AST_ObjectProperty
                 && new RegExp(literalRegex, 'g').test(node.key)
             ) {
+                const {key, start: {pos, endpos}} = node;
                 /** object properties defined by reserved words */
-                snippets.push({
-                    type: 'property_definition',
-                    key: node.key,
-                    start: node.start.pos,
-                    end: node.start.endpos
-                });
-            } else if (node instanceof UglifyJS.AST_Dot
+                _snippet('property_definition', key, pos, endpos);
+            } else if (node instanceof AST_Dot
                 && new RegExp(literalRegex, 'g').test(node.property)
             ) {
                 /** access property defined by reserved words */
-                const snippetObject = {type: 'dot_access', key: node.property};
-                if (source.substring(node.end.pos, node.end.endpos) === node.property) {
-                    snippets.push(Object.assign(snippetObject, {start: node.end.pos, end: node.end.endpos}));
+                if (_substr(node.end.pos, node.end.endpos) === node.property) {
+                    const {property, end: {pos, endpos}} = node;
+                    _snippet('dot_access', property, pos, endpos);
                 } else {
                     /**
                      * node.start.pos
@@ -71,42 +69,31 @@ class ES3CompatiblePlugin {
                      *    \      /
                      * if (a.b.c), then both start and end are token of parentheses
                      */
-                    const wholeString = source.substring(node.start.pos, node.end.endpos);
+                    const {property, start, end} = node;
+                    const entire = _substr(start.pos, end.endpos);
 
-                    snippets.push(Object.assign(snippetObject, {
-                        start: node.start.pos + wholeString.lastIndexOf(snippetObject.key),
-                        end: node.start.pos + wholeString.lastIndexOf(snippetObject.key) + snippetObject.key.length,
-                    }));
+                    _snippet('dot_access', property,
+                        start.pos + entire.lastIndexOf(property),
+                        start.pos + entire.lastIndexOf(property) + property.length);
                 }
-            } else if (node instanceof UglifyJS.AST_Array || node instanceof UglifyJS.AST_Object) {
-                const elements = node instanceof UglifyJS.AST_Array ? node.elements : node.properties;
+            } else if (node instanceof AST_Array || node instanceof AST_Object) {
+                const elements = node instanceof AST_Array ? node.elements : node.properties;
+                const lastElement = elements[elements.length - 1];
 
                 /** trailing comma in Array or Object */
                 if (elements.length
-                    && source.substring(elements[elements.length - 1].end.endpos, node.end.endpos).indexOf(',') > -1
+                    && _substr(lastElement.end.endpos, node.end.endpos).indexOf(',') > -1
                 ) {
                     if (!node.end.comments_before.length) {
                         /** without comments before */
-                        snippets.push({
-                            type: 'trailing_comma',
-                            start: elements[elements.length - 1].end.endpos,
-                            end: node.end.endpos
-                        });
+                        _snippet('trailing_comma', '', lastElement.end.endpos, node.end.endpos);
                     } else {
                         /** between last item and comments */
-                        snippets.push({
-                            type: 'trailing_comma',
-                            start: elements[elements.length - 1].end.endpos,
-                            end: node.end.comments_before[0].pos
-                        });
+                        _snippet('trailing_comma', '', lastElement.end.endpos, node.end.comments_before[0].pos);
 
-                        if (source.substring(node.end.comments_before[0].endpos, node.end.endpos).indexOf(',') > -1) {
+                        if (_substr(node.end.comments_before[0].endpos, node.end.endpos).indexOf(',') > -1) {
                             /** between comments and right-brackets */
-                            snippets.push({
-                                type: 'trailing_comma',
-                                start: node.end.comments_before[0].endpos,
-                                end: node.end.endpos
-                            });
+                            _snippet('trailing_comma', '', node.end.comments_before[0].endpos, node.end.endpos);
                         }
                     }
                 }
@@ -124,34 +111,31 @@ class ES3CompatiblePlugin {
         let lastIndex = 0;
 
         /** sort for nested dot accessing like "a.b.c.d" */
-        return snippets.sort((prevItem, item) => prevItem.start - item.start).reduce((result, item) => {
-            const startIndex = lastIndex;
-            lastIndex = item.end;
+        return snippets.sort((prevItem, item) => prevItem.start - item.start)
+            .map(({type, key, start, end}) => {
+                const startIndex = lastIndex;
+                lastIndex = end;
 
-            switch (item.type) {
-                case 'property_definition':
-                    return result + source.substring(startIndex, item.start)
-                        + source.substring(item.start, item.end).replace(new RegExp(`^${_escapeRegular(item.key)}$`, 'gi'), `'${_escapeReplacement(item.key)}'`);
-                case 'dot_access':
-                    return result + source.substring(startIndex, item.start - 1)
-                        + source.substring(item.start - 1, item.end).replace(new RegExp(`^\\.${_escapeRegular(item.key)}$`, 'gi'), `['${_escapeReplacement(item.key)}']`);
-                case 'trailing_comma':
-                    return result + source.substring(startIndex, item.start)
-                        + source.substring(item.start, item.end).replace(/,/g, '');
-            }
-        }, '') + source.substr(lastIndex);
+                return {
+                    property_definition: _substr(startIndex, start)
+                        + _substr(start, end).replace(new RegExp(`^${_escapeRegular(key)}$`, 'gi'), `'${_escapeReplacement(key)}'`),
+                    dot_access: _substr(startIndex, start - 1)
+                        + _substr(start - 1, end).replace(new RegExp(`^\\.${_escapeRegular(key)}$`, 'gi'), `['${_escapeReplacement(key)}']`),
+                    trailing_comma: _substr(startIndex, start) + _substr(start, end).replace(/,/g, ''),
+                }[type];
+            }).join('') + source.substr(lastIndex);
     }
 
     apply(compiler) {
-        compiler.plugin('emit', (compilation, callback) => {
-            for (const fileName in compilation.assets) {
+        compiler.plugin('emit', ({assets}, callback) => {
+            Object.entries(assets).forEach(([fileName, asset]) => {
                 /** ignore map files */
-                if (!/\.js$/gi.test(fileName)) continue;
+                if (!/\.js$/gi.test(fileName)) return;
 
                 /** todo: how to modify map according to the source? */
-                let {source, map} = compilation.assets[fileName].sourceAndMap();
-                compilation.assets[fileName] = new SourceMapSource(this.process(source, fileName), fileName, map, source, map);
-            }
+                const {source, map} = asset.sourceAndMap();
+                asset = new SourceMapSource(this.process(source, fileName), fileName, map, source, map);
+            });
 
             callback();
         });
