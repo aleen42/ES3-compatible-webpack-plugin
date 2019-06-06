@@ -1,4 +1,4 @@
-<h2 align="center">ES3-compatible-webpack-plugin</h2>
+## ES3-compatible-webpack-plugin
 
 ![npm](https://aleen42.github.io/badges/src/npm.svg) ![javascript](https://aleen42.github.io/badges/src/javascript.svg)
 
