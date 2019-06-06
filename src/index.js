@@ -14,7 +14,7 @@
  *  - Author: aleen42
  *  - Description:
  *  - Create Time: Feb, 9th, 2018
- *  - Update Time: Feb, 24th, 2018
+ *  - Update Time: Jun, 6th, 2019
  *
  */
 
@@ -78,30 +78,32 @@ class ES3CompatiblePlugin {
                         end: node.start.pos + wholeString.lastIndexOf(snippetObject.key) + snippetObject.key.length,
                     }));
                 }
-            } else if (node instanceof UglifyJS.AST_Array) {
-                if (node.elements.length
-                    && source.substring(node.elements[node.elements.length - 1].end.endpos, node.end.endpos).indexOf(',') > -1
+            } else if (node instanceof UglifyJS.AST_Array || node instanceof UglifyJS.AST_Object) {
+                const elements = node instanceof UglifyJS.AST_Array ? node.elements : node.properties;
+
+                /** trailing comma in Array or Object */
+                if (elements.length
+                    && source.substring(elements[elements.length - 1].end.endpos, node.end.endpos).indexOf(',') > -1
                 ) {
-                    /** array trailing comma */
                     if (!node.end.comments_before.length) {
                         /** without comments before */
                         snippets.push({
-                            type: 'array_trailing_comma',
-                            start: node.elements[node.elements.length - 1].end.endpos,
+                            type: 'trailing_comma',
+                            start: elements[elements.length - 1].end.endpos,
                             end: node.end.endpos
                         });
                     } else {
                         /** between last item and comments */
                         snippets.push({
-                            type: 'array_trailing_comma',
-                            start: node.elements[node.elements.length - 1].end.endpos,
+                            type: 'trailing_comma',
+                            start: elements[elements.length - 1].end.endpos,
                             end: node.end.comments_before[0].pos
                         });
 
                         if (source.substring(node.end.comments_before[0].endpos, node.end.endpos).indexOf(',') > -1) {
                             /** between comments and right-brackets */
                             snippets.push({
-                                type: 'array_trailing_comma',
+                                type: 'trailing_comma',
                                 start: node.end.comments_before[0].endpos,
                                 end: node.end.endpos
                             });
@@ -123,21 +125,21 @@ class ES3CompatiblePlugin {
 
         /** sort for nested dot accessing like "a.b.c.d" */
         return snippets.sort((prevItem, item) => prevItem.start - item.start).reduce((result, item) => {
-                const startIndex = lastIndex;
-                lastIndex = item.end;
+            const startIndex = lastIndex;
+            lastIndex = item.end;
 
-                switch (item.type) {
-                    case 'property_definition':
-                        return result + source.substring(startIndex, item.start)
-                            + source.substring(item.start, item.end).replace(new RegExp(`^${_escapeRegular(item.key)}$`, 'gi'), `'${_escapeReplacement(item.key)}'`);
-                    case 'dot_access':
-                        return result + source.substring(startIndex, item.start - 1)
-                            + source.substring(item.start - 1, item.end).replace(new RegExp(`^\\.${_escapeRegular(item.key)}$`, 'gi'), `['${_escapeReplacement(item.key)}']`);
-                    case 'array_trailing_comma':
-                        return result + source.substring(startIndex, item.start)
-                            + source.substring(item.start, item.end).replace(/,/g, '');
-                }
-            }, '') + source.substr(lastIndex);
+            switch (item.type) {
+                case 'property_definition':
+                    return result + source.substring(startIndex, item.start)
+                        + source.substring(item.start, item.end).replace(new RegExp(`^${_escapeRegular(item.key)}$`, 'gi'), `'${_escapeReplacement(item.key)}'`);
+                case 'dot_access':
+                    return result + source.substring(startIndex, item.start - 1)
+                        + source.substring(item.start - 1, item.end).replace(new RegExp(`^\\.${_escapeRegular(item.key)}$`, 'gi'), `['${_escapeReplacement(item.key)}']`);
+                case 'trailing_comma':
+                    return result + source.substring(startIndex, item.start)
+                        + source.substring(item.start, item.end).replace(/,/g, '');
+            }
+        }, '') + source.substr(lastIndex);
     }
 
     apply(compiler) {
